@@ -1,4 +1,28 @@
 const { SaleProduct, Sale, Product } = require('../models');
+
+
+const recalculateSaleTotal = async (saleId) => {
+    const details = await SaleProduct.findAll({
+        where: {
+            saleId
+        }
+    });
+
+    const total = details.reduce((sum, detail) => {
+        return sum + Number(detail.quantity) * Number(detail.price);
+    }, 0);
+
+    await Sale.update(
+        { total },
+        {
+            where: {
+                id: saleId
+            }
+        }
+    );
+};
+
+
 const getSaleProducts = async (req, res) => {
     try {
         const details = await SaleProduct.findAll({
@@ -7,7 +31,9 @@ const getSaleProducts = async (req, res) => {
                 { model: Product, as: 'product' }
             ]
         });
+
         return res.status(200).json(details);
+
     } catch (err) {
         return res.status(500).json({
             message: 'Error obtaining sale details',
@@ -16,9 +42,11 @@ const getSaleProducts = async (req, res) => {
     }
 };
 
+
 const getSaleProductById = async (req, res) => {
     try {
         const { id } = req.params;
+
         const detail = await SaleProduct.findByPk(id, {
             include: [
                 { model: Sale, as: 'sale' },
@@ -27,10 +55,13 @@ const getSaleProductById = async (req, res) => {
         });
 
         if (!detail) {
-            return res.status(404).json({ message: 'Sale detail not found' });
+            return res.status(404).json({
+                message: 'Sale detail not found'
+            });
         }
 
         return res.status(200).json(detail);
+
     } catch (err) {
         return res.status(500).json({
             message: 'Error obtaining sale detail',
@@ -38,18 +69,26 @@ const getSaleProductById = async (req, res) => {
         });
     }
 };
+
+
 const createSaleProduct = async (req, res) => {
     try {
         const { saleId, productId, quantity, price } = req.body;
 
         const saleExists = await Sale.findByPk(saleId);
+
         if (!saleExists) {
-            return res.status(404).json({ message: 'Sale not found' });
+            return res.status(404).json({
+                message: 'Sale not found'
+            });
         }
 
         const productExists = await Product.findByPk(productId);
+
         if (!productExists) {
-            return res.status(404).json({ message: 'Product not found' });
+            return res.status(404).json({
+                message: 'Product not found'
+            });
         }
 
         const newDetail = await SaleProduct.create({
@@ -59,7 +98,11 @@ const createSaleProduct = async (req, res) => {
             price
         });
 
+        
+        await recalculateSaleTotal(saleId);
+
         return res.status(201).json(newDetail);
+
     } catch (err) {
         return res.status(400).json({
             message: 'Error creating sale detail',
@@ -68,28 +111,53 @@ const createSaleProduct = async (req, res) => {
     }
 };
 
-// actualizar detalle
+
 const updateSaleProduct = async (req, res) => {
     try {
         const { id } = req.params;
+
         const detail = await SaleProduct.findByPk(id);
 
         if (!detail) {
-            return res.status(404).json({ message: 'Sale detail not found' });
+            return res.status(404).json({
+                message: 'Sale detail not found'
+            });
         }
+
+        const oldSaleId = detail.saleId;
 
         if (req.body.saleId) {
             const saleExists = await Sale.findByPk(req.body.saleId);
-            if (!saleExists) return res.status(404).json({ message: 'Sale not found' });
+
+            if (!saleExists) {
+                return res.status(404).json({
+                    message: 'Sale not found'
+                });
+            }
         }
 
         if (req.body.productId) {
             const productExists = await Product.findByPk(req.body.productId);
-            if (!productExists) return res.status(404).json({ message: 'Product not found' });
+
+            if (!productExists) {
+                return res.status(404).json({
+                    message: 'Product not found'
+                });
+            }
         }
 
         await detail.update(req.body);
+
+        
+        await recalculateSaleTotal(oldSaleId);
+
+        
+        if (detail.saleId !== oldSaleId) {
+            await recalculateSaleTotal(detail.saleId);
+        }
+
         return res.status(200).json(detail);
+
     } catch (err) {
         return res.status(400).json({
             message: 'Error updating sale detail',
@@ -98,18 +166,30 @@ const updateSaleProduct = async (req, res) => {
     }
 };
 
-// eliminar detalle
+
 const deleteSaleProduct = async (req, res) => {
     try {
         const { id } = req.params;
+
         const detail = await SaleProduct.findByPk(id);
 
         if (!detail) {
-            return res.status(404).json({ message: 'Sale detail not found' });
+            return res.status(404).json({
+                message: 'Sale detail not found'
+            });
         }
 
+        const saleId = detail.saleId;
+
         await detail.destroy();
-        return res.status(200).json({ message: 'Sale detail deleted successfully' });
+
+        
+        await recalculateSaleTotal(saleId);
+
+        return res.status(200).json({
+            message: 'Sale detail deleted successfully'
+        });
+
     } catch (err) {
         return res.status(400).json({
             message: 'Error deleting sale detail',
@@ -117,6 +197,7 @@ const deleteSaleProduct = async (req, res) => {
         });
     }
 };
+
 
 module.exports = {
     getSaleProducts,
